@@ -4,7 +4,7 @@ const adminRoutes = require("./routes/admin");
 const shopRoutes = require("./routes/shop");
 const authRoutes = require("./routes/auth");
 const errorsController = require("./controllers/error");
-const path = require("path") ;
+const path = require("path");
 const app = express();
 const session = require("express-session");
 const MongoDBStore = require("connect-mongodb-session")(session);
@@ -12,10 +12,9 @@ const csrf = require("csurf");
 const flash = require("connect-flash");
 const multer = require("multer");
 const crypto = require("crypto");
-//stripe publishable key: pk_test_51Hk0fRD2qi3gyedRXyjbDuGS6KgRmDizQGzrYNYt86r9Tyrws4EgKvCduRPsSi7omeTSZFIofAZODhMgtTUUgRbD00EQqRFfUM
-//stripe secrect key: sk_test_51Hk0fRD2qi3gyedRz5SWPr41BecGIbwssJvJZ1eNEdrLVK7CrmnYRVwOHp31QBGtImLj8NtHjOY19MYPzrnFGlvc00qamA9Cmo
+const key = require("./keys");
 
-const MONGODB_URI = 'mongodb://127.0.0.1:27017/shop?authSource=admin';
+const MONGODB_URI = key.mongoDB.mongoDBUri;
 
 // const mongoConnect = require("./util/database").mongoConnect;
 const User = require("./models/user");
@@ -23,121 +22,122 @@ const mongoose = require("mongoose");
 const { time, timeStamp } = require("console");
 
 const store = new MongoDBStore({
-    uri: MONGODB_URI,
-    collection: 'sessions'
-})
+  uri: MONGODB_URI,
+  collection: "sessions",
+});
 const csrfProtection = csrf();
 const fileStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'images');
-    },
-    filename: (req, file, cb) => {
-        cb(null, crypto.randomBytes(64).toString('hex') + '-' + file.originalname);
-    } 
-})
+  destination: (req, file, cb) => {
+    cb(null, "images");
+  },
+  filename: (req, file, cb) => {
+    cb(null, crypto.randomBytes(64).toString("hex") + "-" + file.originalname);
+  },
+});
 
-//filter files 
+//filter files
 const fileFilter = (req, file, cb) => {
-    if(
-        file.mimetype === 'image/png' ||
-        file.mimetype === 'image/jpg' ||
-        file.mimetype === 'image/jpeg' 
-    ) {
-        cb(null, true);
-    } else {
-        cb(null, false);
-    }
-
-}
+  if (
+    file.mimetype === "image/png" ||
+    file.mimetype === "image/jpg" ||
+    file.mimetype === "image/jpeg"
+  ) {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
 //template engine for ejs
 //we will choose ejs throught our project.
-app.set('view engine', 'ejs');
-app.set('views', 'views');
+app.set("view engine", "ejs");
+app.set("views", "views");
 //for parsing body
-app.use(bodyParser.urlencoded({extended: false}));
+app.use(bodyParser.urlencoded({ extended: false }));
 //for images
-app.use(multer({
+app.use(
+  multer({
     storage: fileStorage,
-    fileFilter: fileFilter
-}).single('image'));
+    fileFilter: fileFilter,
+  }).single("image")
+);
 //for parsing static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/images', express.static(path.join(__dirname, 'images')));
+app.use(express.static(path.join(__dirname, "public")));
+app.use("/images", express.static(path.join(__dirname, "images")));
 //set cookies and sessions
 app.use(
-    session({
-        secret: 'my secret', 
-        resave: false, 
-        saveUninitialized: false,
-        store: store
-    })
+  session({
+    secret: "my secret",
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+  })
 );
 
 app.use(csrfProtection);
 //inittilaze the flash
 app.use(flash());
 
-app.use( (req, res, next) => {
-    if(!req.session.user){
+app.use((req, res, next) => {
+  if (!req.session.user) {
+    return next();
+  }
+  User.findById(req.session.user._id)
+    .then((user) => {
+      if (!user) {
         return next();
-    }
-    User.findById(req.session.user._id)
-    .then(user => {
-        if(!user){
-            return next();
-        }
-        req.user = user;
-        next();
+      }
+      req.user = user;
+      next();
     })
-    .catch( err => {
-        next(new Error(err));
-    })
+    .catch((err) => {
+      next(new Error(err));
+    });
 });
 
 //we can protect our user from csrf attack and authenticated
 
-app.use( (req, res, next) => {
-    res.locals.isAuthenticated = req.session.isLoggedIn;
-    res.locals.csrfToken = req.csrfToken();
-    next();
-})
+app.use((req, res, next) => {
+  res.locals.isAuthenticated = req.session.isLoggedIn;
+  res.locals.csrfToken = req.csrfToken();
+  next();
+});
 
 //we can filter out routes
 
-app.use('/admin', adminRoutes);
+app.use("/admin", adminRoutes);
 app.use(shopRoutes);
 app.use(authRoutes);
 
-app.get('/500', errorsController.get500);
+app.get("/500", errorsController.get500);
 //adding error page
 app.use(errorsController.errorPage);
 
-app.use( (error, req, res, next) => {
-    res.status(500).render('500', {
-        pageTitle: 'Error',
-        path: '/500',
-        isAuthenticated: req.session.isLoggedIn
-    });
+app.use((error, req, res, next) => {
+  res.status(500).render("500", {
+    pageTitle: "Error",
+    path: "/500",
+    isAuthenticated: req.session.isLoggedIn,
+  });
 });
- 
+
 //this function returns a server, we need to store it.
 const port = 3000;
 //DB connection using mongoose
 
-mongoose.connect(MONGODB_URI, {
+mongoose
+  .connect(MONGODB_URI, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(result => {
-    console.log('database connected');
+    useUnifiedTopology: true,
+  })
+  .then((result) => {
+    console.log("database connected");
     app.listen(port, () => {
-        console.log(`server started at ${port}`);
-    })
-})
-.catch(err => {
+      console.log(`server started at ${port}`);
+    });
+  })
+  .catch((err) => {
     console.log(err);
-});
-
+  });
 
 //let's define middlewares between app and server
 // app.use( (req, res, next) => {
@@ -219,10 +219,10 @@ mongoose.connect(MONGODB_URI, {
 // });
 
 //Special Note
-//1.IN package.json in script we need to add a script called start, which is a special 
+//1.IN package.json in script we need to add a script called start, which is a special
 //keyword and we will start the server by only typing "npm start"
 
-//2.IN package.json in script we can add any script without of start, which is a not aspecial 
+//2.IN package.json in script we can add any script without of start, which is a not aspecial
 //keyword and we will start the server by only typing "npm run {script name}"
 
 // mongoConnect( client => {
